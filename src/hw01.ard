@@ -1,0 +1,97 @@
+-- 1. Установите arend, следуя инструкциям на странице https://arend-lang.github.io/download
+--    В IDEA можно просто импортировать данный проект.
+
+-- 2. Определите аналоги следующих функций на языке хаскелл.
+{- Haskell:
+   second :: Nat -> Nat -> Nat -> Nat
+   second _ y _ = y
+
+   apply :: (Nat -> Nat) -> Nat -> Nat
+   apply f x = f x
+
+   compose :: (Nat -> Nat) -> (Nat -> Nat) -> Nat -> Nat
+   compose f g x = f (g x)
+
+   flip :: (Nat -> Nat -> Nat) -> Nat -> Nat -> Nat
+   flip f x y = f y x
+
+   second' = flip (second 0)
+-}
+
+\func second (_ x _ : Nat) => x
+
+\func apply (f : Nat -> Nat) (x : Nat) => f x
+
+\func compose (f g : Nat -> Nat) (x : Nat) => f (g x)
+
+\func flip (f : Nat -> Nat -> Nat) (x y : Nat) => f y x
+
+
+
+
+-- 3. Расставьте приоритеты функций f1, f2, f3, f4, f5 и f6 так, чтобы функция test проходила тайпчекинг.
+
+\import lect01 \hiding (+,*)
+
+\func \infix 8 f1 (x y : Nat) => x
+\func \fix 8 f2 : Nat => 0
+\func \infix 9 f3 (f : Nat -> Nat) (z : Nat) : Nat => 0
+\func f4 : Nat => 0
+\func \infix 8 f5 => f1
+\func f6 => f4
+
+\func test => f1 f2 f3 f4 f5 f6
+
+-- 4. Определите функцию if, аналогичную следующей функции:
+{- Haskell:
+   if :: Bool -> Bool -> Bool -> Bool
+   if True t _ = t
+   if False _ e = e
+-}
+
+\func if' (i t e : Bool) : Bool \elim i
+  | true => t
+  | false => e
+
+
+-- 5. Определите || через if.
+
+\func \infixr 2 || (x y : Bool) : Bool => if' x true y
+
+-- 6. Определите возведение в степень и факториал для натуральных чисел.
+
+\open Nat \hiding (-,div) -- Здесь лежат + и *.
+
+\func \infixr 8 ^ (x y : Nat) : Nat \elim y
+  | 0 => 1
+  | suc y => x ^ y * y
+
+\func fac (x : Nat) : Nat \elim x
+  | 0 => 1
+  | suc x => (fac x) * suc x
+
+-- 7. Определите mod и gcd.
+
+\func mod (x y : Nat) : Nat => mod' x x y
+  \where
+    \func mod' (s x y : Nat) : Nat \elim s
+      | 0 => 0
+      | suc s => if (y < suc x) (mod' s (x - y) y) x
+
+\func testMod1 : mod 5 3 = 2 => idp
+\func testMod2 : mod 2 3 = 2 => idp
+\func testMod3 : mod 3 3 = 0 => idp
+\func testMod4 : mod 0 3 = 0 => idp
+
+\func gcd (x y : Nat) : Nat => gcd' (x + y) x y
+  \where
+    \func gcd' (s x y : Nat) : Nat \elim s
+      | 0 => 0
+      | suc s => if (y < x) (gcd' s y x) (if (0 < x) (gcd' s (mod y x) x) y)
+
+\func testGcd1 : gcd 5 3 = 1 => idp
+\func testGcd2 : gcd 5 10 = 5 => idp
+\func testGcd3 : gcd 0 10 = 10 => idp
+\func testGcd4 : gcd 1 1 = 1 => idp
+\func testGcd5 : gcd 125 50 = 25 => idp
+
