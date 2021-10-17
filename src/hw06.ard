@@ -1,0 +1,112 @@
+\import Paths.Meta
+\import Utils
+\import hw01 (gcd)
+\import lect06
+\open Nat (+)
+
+-- 1. Определите функцию swap несколькими способами.
+
+-- При помощи \cowith и доступа к полям.
+
+\func swap {A B : \Type} (p : Pair A B) : Pair B A \cowith
+  | fst_ => p.snd_
+  | snd_ => p.fst_
+
+-- При помощи \new и паттерн матчинга.
+
+\func swap' {A B : \Type} (p : Pair A B) : Pair B A \elim p
+  | (a,b) => \new Pair {
+    | fst_ => b
+    | snd_ => a
+  }
+
+-- При помощи \new и доступа к полям.
+
+\func swap'' {A B : \Type} (p : Pair A B) : Pair B A => \new Pair {
+  | fst_ => p.snd_
+  | snd_ => p.fst_
+}
+-- 2. Докажите, что swap (swap p) = p.
+
+\func swap-involutive {A B : \Type} (p : Pair A B) : swap (swap p) = p => idp
+
+-- 3. Докажите, что тип PosNat 0 пустой, а тип PosNat 1 нет.
+
+\func zero-isNotPos (p : PosNat 0) : Empty => p.p
+
+\func one-isPos : PosNat 1 => \new PosNat 1 ()
+
+-- 4. Определите \record, состоящий из пар взаимно простых натуральных чисел.
+--    Определите тип, состоящий из натуральных чисел, взаимно простых с 60.
+
+\record CoprimePair
+  | \coerce fst_ : Nat
+  | snd_ : Nat
+  | proof : gcd fst_ snd_ = 1
+
+\func CoprimeWith60 => CoprimePair { | snd_ => 60 }
+
+-- 5. Закончите определение класса монад. Этот класс должен содержать все монадные законы и реализовывать все поля из класса функторов.
+
+\class Monad \extends Functor
+  | return {A : \Set} : A -> F A
+  | \infixl 1 >>= {A B : \Set} : F A -> (A -> F B) -> F B
+  | >>=-assoc {A B C : \Set} (f : A -> F B) (g : B -> F C) (l : F A) : (l >>= f >>= g) = (l >>= (\lam a => f a >>= g))
+  | return-neutral1 {A : \Set} (l : F A) : (l >>= return) = l
+  | return-neutral2 {A B : \Set} (a : A) (f : A -> F B): (return a >>= f) = f a
+  | fmap h l => l >>= (\lam x => return (h x))
+  | fmap-id l => return-neutral1 l
+  | fmap-comp f g l => \let | retf => \lam a => return (f a) | retg => \lam a => return (g a) \in
+    sym (>>=-assoc retf retg l *> pmap (\lam x => l >>= x) (ext(\lam a' => return-neutral2 (f a') retg)))
+-- 6. Определите \instance Monad для Maybe.
+
+\instance MaybeMonad : Monad Maybe
+  | return => just
+  | >>= {A B : \Set} (l : Maybe A) (f : A -> Maybe B) : Maybe B \elim l {
+    | nothing => nothing
+    | just a => f a
+  }
+  | >>=-assoc {A B C : \Set} (f : A -> Maybe B) (g : B -> Maybe C) (l : Maybe A) : (l >>= f >>= g) = (l >>= (\lam a => f a >>= g)) \elim l {
+    | nothing => idp
+    | just a => idp
+  }
+  | return-neutral1 {A : \Set} (l : Maybe A) : (l >>= just) = l \elim l {
+    | nothing => idp
+    | just a => idp
+  }
+  | return-neutral2 {A B : \Set} (a : A) (f : A -> Maybe B): (just a >>= f) = f a => idp
+
+-- 7. Определите \instance Monad для State и State'.
+
+\record State (S A : \Type)
+  | state : S -> \Sigma S A
+
+\data State' (S A : \Type)
+  | state' (S -> \Sigma S A)
+
+\instance StateMonad {S : \Set} : Monad (State S)
+  | return a => \new State {
+    | state s => (s, a)
+  }
+  | >>= h f => \new State {
+    | state s => \let (s', a) => state {h} s \in state {f a} s'
+  }
+  | >>=-assoc f g l => idp
+  | return-neutral1 l => idp
+  | return-neutral2 a f => idp
+
+\func StoS' {S A : \Type} (h : State S A) : State' S A => state' (\lam s => h.state s)
+
+\func S'toS {S A : \Type} (h : State' S A) : State S A \elim h
+  | state' f => \new State {
+    | state => f
+  }
+\func invS'S {S A : \Type} (h : State' S A) : StoS' (S'toS h) = h \elim h
+  | state' _x => idp
+
+\instance State'Monad {S : \Set} : Monad (State' S)
+  | return a => state' (\lam s => (s, a))
+  | >>= l f => StoS' ((S'toS l) >>= (\lam x => S'toS (f x)))
+  | >>=-assoc f g l => idp
+  | return-neutral1 l => pmap StoS' idp *> invS'S l
+  | return-neutral2 a f => pmap StoS' idp *> invS'S (f a)
