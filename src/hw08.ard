@@ -1,0 +1,153 @@
+\import Arith.Nat
+\import Data.Bool
+\import Data.List \hiding (headDef)
+\import Data.Or
+\import Logic.Meta
+\import Meta
+\import Paths
+\import Paths.Meta
+\import Utils (<->, sym)
+\import hw02
+\import lect08
+\import Order.LinearOrder
+\open LinearOrder
+
+-- 1. Реализуйте функцию filter и докажите ее корректность, то есть, что выполнены следующие условия:
+--    * filter p xs является подсписком xs
+--    * Все элементы filter p xs удовлетворяют предикату p
+--    * Любой подсписок xs с тем же свойством является подсписком filter p xs
+
+\module Filter \where {
+  \func filter {A : \Type} (P : A -> Bool) (xs : List A) : List A\elim xs
+    | nil => nil
+    | :: a xs => \case P a \with {
+      | false => filter P xs
+      | true => a :: (filter P xs)
+    }
+
+  \func filter-sublist {A : \Type} (P : A -> Bool) (xs : List A) : Sublist (filter P xs) xs
+    | P, nil => sublist-nil
+    | P, :: a xs => mcases \with {
+      | false => sublist-larger (filter-sublist P xs)
+      | true => sublist-cons idp (filter-sublist P xs)
+    }
+
+  \func filter-correct {A : \Type} (P : A -> Bool) (xs : List A) : CorrectList (filter P xs) P
+    | P, nil => nil-correct
+    | P, :: a xs => cases (P a arg addPath) \with {
+      | false, _ => filter-correct P xs
+      | true, p => cons-correct p (filter-correct P xs)
+    }
+
+  \func correct-is-filter-sublist {A : \Type} (P : A -> Bool) (xs ys : List A) (ys_sub_xs : Sublist ys xs) (ys_correct : CorrectList ys P)
+    : Sublist ys (filter P xs) \elim xs, ys, ys_sub_xs, ys_correct
+    | _, nil, _, _ => sublist-nil
+    | :: a xs, :: b ys, sublist-cons p p1, cons-correct p2 q => cases (P a arg addPath) \with {
+      | false, _ => \let | s => pmap P p \in contradiction
+      | true, _ => sublist-cons p (correct-is-filter-sublist P xs ys p1 q)
+    }
+    | :: a xs, :: b ys, sublist-larger p, x => cases (P a) \with {
+      | false => correct-is-filter-sublist P xs (b :: ys) p x
+      | true => sublist-larger (correct-is-filter-sublist P xs (b :: ys) p x)
+    }
+}
+
+\data Sublist {A : \Type} (xs ys : List A) \elim xs, ys
+  | nil, _ => sublist-nil
+  | :: a xs, :: b ys => sublist-cons (a = b) (Sublist xs ys)
+  | xs, :: b ys => sublist-larger (Sublist xs ys)
+
+\data CorrectList{A : \Type} (xs : List A) (P : A -> Bool) \elim xs
+  | nil => nil-correct
+  | :: a xs => cons-correct (P a = true) (CorrectList xs P)
+
+-- 2. Докажите, что Perm l1 l2 тогда и только тогда, когда Insertion.sort l1 = Insertion.sort l2.
+
+\func |=>| {A : Dec} (l1 l2 : List A) (p : Perm l1 l2) : Insertion.sort l1 = Insertion.sort l2 \elim l1, l2, p
+  | nil, nil, perm-nil => idp
+  | :: x l1, :: y l2, perm-cons p p1 => \let eq => |=>| l1 l2 p1 \in pmap (Insertion.sort.insert x) eq *> pmap (Insertion.sort.insert __ (Insertion.sort l2)) p
+  | l1, l2, perm-trans {zs} p1 p2 => |=>| l1 zs p1 *> |=>| zs l2 p2
+  | :: x (:: x' l1), :: y (:: y' l2), perm-swap p p1 p2 =>
+    Insertion.sort-perm.insert-comm x x' (Insertion.sort l1)
+      *> rewrite p (rewrite p1 (rewrite p2 idp))
+
+\func perm-comm {A : Dec} {l1 l2 : List A} (p : Perm l1 l2) : Perm l2 l1 \elim l1, l2, p
+  | nil, nil, perm-nil => perm-nil
+  | :: x l1, :: y l2, perm-cons p p1 => \let s => perm-comm p1 \in perm-cons (inv p) s
+  | l1, l2, perm-trans {zs} p1 p2 => \let | s1 =>  perm-comm p1 | s2 =>  perm-comm p2 \in perm-trans s2 s1
+  | :: x (:: x' l1), :: y (:: y' l2), perm-swap p p1 p2 => perm-swap (inv p1) (inv p) (inv p2)
+
+\func |<=| {A : Dec} (l1 l2 : List A) (p : Insertion.sort l1 = Insertion.sort l2) : Perm l1 l2 =>
+  \let p1 => Insertion.sort-perm l1
+       | p2 => Insertion.sort-perm l2
+       | p3 => transport (\lam x => Perm x (Insertion.sort l1)) p perm-refl \in perm-trans (perm-trans p1 (perm-comm p3)) (perm-comm p2)
+
+-- 3. Докажите, что спецификация "результат является перестановкой входа и отсортирован" является полной для функции sort.
+
+\func completeness {A : Dec} (sort : List A -> List A) (l : List A) (p : Perm l (sort l)) (s : Sorted (sort l)) : sort l = Insertion.sort l =>
+  lemma1 (sort l) l p s
+  \where {
+    \func lemma1 {A : Dec} (sl l : List A) (p : Perm l sl) (s : Sorted sl) : sl = Insertion.sort l
+      | nil, nil, perm-nil, sorted-nil => idp
+      | nil, l, perm-trans {zs} p1 p2, sorted-nil => \let s => perm-nil=>nil zs nil p2 idp \in pmap Insertion.sort (inv(perm-nil=>nil l zs p1 s))
+      | :: x sl, :: x1 l, perm-cons p p1, sorted-cons _x s => \let s1 => lemma1 sl l p1 s \in inv(insert-in-head sl x _x s) *> rewrite p (rewrite s1 idp)
+      | :: x sl, l, perm-trans {zs} p1 p2, q => \let s1 => lemma1 (x :: sl) zs p2 q \in s1 *> inv(|=>| l zs p1)
+      | :: x (:: y' sl), :: y (:: x' l), perm-swap p p1 p2, sorted-cons _x (sorted-cons _x1 s) => \let s1 => (insert-in-head sl y' _x1) s
+                                                                                                       | q => rewrite (inv(y-is-head x y' sl)) _x
+                                                                                                       | s2 => insert-in-head (y' :: sl) x _x (sorted-cons _x1 s)
+                                                                                                       | t => sorted=sort sl s
+                                                                                                  \in rewrite p2 (rewrite (inv t) ((pmap (x :: __) (inv s1) *> (rewrite (inv p) (rewrite (inv p1)
+            (inv (insert-in-head (Insertion.sort.insert y sl) x' (rewrite p (rewrite s1 (rewrite p1 _x))) (rewrite p (rewrite s1 (sorted-cons _x1 s)))))))) *> Insertion.sort-perm.insert-comm x' y sl))
+
+    \func y-is-head {A : Dec} (x y : A) (l : List A) : y = headDef x (y :: l) => idp
+
+    \func perm-nil=>nil {A : Dec} (l z : List A) (p : Perm l z) (s : z = nil) : l = nil \elim l, z, p
+      | nil, nil, perm-nil => idp
+      | :: x l, :: y z, perm-cons p p1 => contradiction
+      | l, z, perm-trans {zs} p1 p2 => \let s1 => (perm-nil=>nil zs z p2) s \in perm-nil=>nil l zs p1 s1
+      | :: x (:: x' l), :: y (:: y' z), perm-swap p p1 p2 => contradiction
+
+    \func insert-in-head {A : Dec} (l : List A) (x : A) (p : x <= headDef x l) (s : Sorted l) : Insertion.sort.insert x l = x :: l \elim l
+      | nil => idp
+      | :: a l => mcases \with {
+        | inl x<a => contradiction
+        | inr a<=x => idp
+      }
+
+    \func sorted=sort {A : Dec} (l : List A) (s : Sorted l) : l = Insertion.sort l \elim l, s
+      | nil, sorted-nil => idp
+      | :: x l, sorted-cons _x s => inv(insert-in-head l x _x s) *> pmap (Insertion.sort.insert x __) (sorted=sort l s)
+  }
+
+-- 4. Определите факториал через хвостовую рекурсию.
+--    Докажите, что он равен обычному определению факториала.
+
+\func fact' (n : Nat) => fact1 n 1
+  \where {
+    \func fact1 (n acc : Nat) : Nat \elim n
+      | 0 => acc
+      | suc n => fact1 n (acc Nat.* (suc n))
+  }
+
+\func fact=fact' (n : Nat) : fact' n = fac n
+  | 0 => idp
+  | suc n => lemma (suc n) 1
+  \where {
+    \func lemma (n a : Nat) : fact'.fact1 n a = (fac n) Nat.* a \elim n
+      | 0 => NatSemiring.*-comm
+      | suc n => \let x => lemma n (a Nat.* (suc n)) \in x *> pmap (fac n Nat.* __) (NatSemiring.*-comm  {a} {suc n}) *> inv(NatSemiring.*-assoc {fac n} {suc n} {a})
+  }
+
+-- 5. Определите функцию, которая проверяет правильность скобочной последовательности.
+--    Докажите ее корректность.
+
+\data Paren | Left | Right
+
+\func isBalanced (xs : List Paren) : Bool => {?}
+
+\data Balanced (xs : List Paren) \with
+  | nil => nil-balanced
+  | :: Left xs => cons-balanced {ys : List Paren} (Balanced ys) (xs = ys ++ Right :: nil)
+  | xs => append-balanced {ys zs : List Paren} (Balanced ys) (Balanced zs) (xs = ys ++ zs)
+
+\func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs => {?}
