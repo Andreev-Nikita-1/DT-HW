@@ -1,0 +1,235 @@
+\import Data.List
+\import Logic.Meta
+\import Meta
+\import Order.LinearOrder
+\import Paths
+\import Paths.Meta
+\import Utils (Maybe, Vec, just, maybe, nothing)
+\import lect04 (vcons)
+\import lect07 (Decide, no, yes)
+\import lect09
+\open LinearOrder
+
+-- 1. Закончите определение \instance Monad для Term.
+
+\instance TermMonad : Monad Term
+  | return => var
+  | >>= {A B : \Set} (t : Term A) (k : A -> Term B) : Term B \elim t {
+    | var v => k v
+    | unit => unit
+    | app t1 t2 => app (t1 >>= k) (t2 >>= k)
+    | lam t => lam (t >>= liftM k)
+  }
+  | return-left => {?}
+  | return-right => {?}
+  | >>=-assoc => {?}
+
+-- 2. Определите отношение многошаговой редукции на Term.
+
+\func Red {V : \Set} (t s : Term V) : \Type => \Sigma (n : Nat) (Redn n t s)
+  \where {
+    \func Redn {V : \Set} (n : Nat) (t s : Term V) : \Set \elim n
+      | 0 => t = s
+      | suc n => \Sigma (v : Term V) (Redn n t v) (Red1 v s)
+  }
+
+-- 3. Стратегия редукции -- это функция, которая каждому терму сопоставляет либо некоторый терм, к которому он редуцируется за 1 шаг, либо доказательство, что таких термов нет.
+--    Определите любую стратегию редукции.
+
+\func strategy {V : \Set} (t : Term V) : Decide (\Sigma (s : Term V) (Red1 t s)) \elim t
+  | var v => no (\lam f => \case f.2)
+  | unit => no (\lam f => \case f.2)
+  | app (lam f) t2 => yes ((f >>= maybe t2 var), redBeta idp idp)
+  | app t1 t2 => \case strategy t1, strategy t2 \with {
+    | yes a, _ => yes (app a.1 t2, redAppLeft a.2 idp)
+    | no n, yes a => yes (app t1 a.1, redAppRight idp a.2)
+    | no n, no n1 => cases (t1 arg addPath) \with {
+      | var v, _ => no (\lam f => cases (f.1, f.2) \with {
+        | s, redBeta p p1 => contradiction
+        | app s s', redAppLeft x p => contradiction
+        | app s s', redAppRight p x => n1 (s', x)
+      })
+      | unit, _ => no (\lam f => cases (f.1, f.2) \with {
+        | s, redBeta p p1 => contradiction
+        | app s s', redAppLeft x p => contradiction
+        | app s s', redAppRight p x => n1 (s', x)
+      })
+      | app t t3, q => no (\lam f => cases (f.1, f.2) \with {
+        | s, redBeta p p1 => contradiction
+        | app s s', redAppLeft x p => n (s, rewrite q x)
+        | app s s', redAppRight p x => n1 (s', x)
+      })
+      | lam t, q => yes ((t >>= maybe t2 var), redBeta idp idp)
+    }
+  }
+  | lam t => cases (strategy t) \with {
+    | yes (a, f) => yes (lam a, redLam f)
+    | no n => no (\lam f => cases (f.1, f.2) \with {
+      | lam s, redLam x => n (s, x)
+    })
+  }
+
+-- 4. Докажите, что подтермы достижимого терма достижимы.
+
+\func appAccLeft {V : \Set} {t s : Term V} (a : Acc Red1 (app t s)) : Acc Red1 t \elim a
+  | acc _x => acc (\lam x y => appAccLeft(_x (app x s) (redAppLeft y idp)))
+
+\func appAccRight {V : \Set} {t s : Term V} (a : Acc Red1 (app t s)) : Acc Red1 s \elim a
+  | acc _x => acc (\lam x y => appAccRight(_x (app t x) (redAppRight idp y)))
+
+\func subLamAcc {V : \Set} {t : Term (Maybe V)} (a : Acc Red1 (lam t)) : Acc Red1 t \elim a
+  | acc _x => acc (\lam x y => subLamAcc(_x (lam x) (redLam y)))
+
+-- 5. Докажите следующую обобщенную лемму о подстановке и выведите из нее обычную версию: если Г, x : A |- b : B и Г |- a : A, то Г |- b[a/x] : B.
+
+\func substLem {U V : \Set} (ctx : U -> Type) (b : Term U) (B : Type) (h : hasType ctx b B)
+               (ctx' : V -> Type) (a : U -> Term V) (h' : \Pi (u : U) -> hasType ctx' (a u) (ctx u))
+  : hasType ctx' (b >>= a) B => {?}
+--  : hasType ctx' (b >>= a) B \elim b, B, h
+--  | var v, T, varType p => rewrite (inv p) (h' v)
+--  | unit, Unit, unitType => unitType
+--  | app f a1, T, appType {S} h1 h2 => appType (substLem ctx f (Arr S T) h1 ctx' a h') (substLem ctx a1 S h2 ctx' a h')
+--  | lam t, Arr S T, lamType h => lamType (substLem (maybe S ctx) t T h (maybe S ctx') (liftM a) (\lam u => cases u \with {
+--    | nothing => varType idp
+--    | just a1 => \let w => h' a1 \in cases (a a1 arg addPath) \with {
+--      | var v, p => rewrite (lem2 a a1) (rewrite p (varType (cases (rewrite p w) \with {
+--        | varType p1 => p1
+--      })))
+--      | unit, p => rewrite (lem2 a a1) (rewrite p (\let z => rewrite p w \in lem3 S unit ctx' z))
+--      | app x1 x2, p => rewrite (lem2 a a1) (rewrite p (cases (rewrite p w) \with {
+--        | appType x3 x4 => \let c1 => lem3 S x1 ctx' x3 | c2 => lem3 S x2 ctx' x4 \in appType c1 c2
+--      }))
+--      | lam x, p => rewrite (lem2 a a1) (lem3 S (a a1) ctx' w)
+--    }
+--  }))
+--
+--\func MaybeN (n : Nat) (U : \Set) : \Set \elim n
+--  | 0 => U
+--  | suc n => Maybe (MaybeN n U)
+--
+--\func justN {U : \Set} (n : Nat) : (MaybeN n U) ->  MaybeN (suc n) U \elim n
+--  | 0 => just
+--  | suc n => maybe nothing (\lam x => just (justN n x))
+--
+----\func justN-eq {U : \Set} {n : Nat} : (\lam (x : U) => just (justN n x)) = justN (suc n) => idp
+--
+--\func maybeN {U : \Set} (n : Nat) (R : Type) (L : List Type) (ctx : U -> Type) : (MaybeN n U) -> Type \elim n, L
+--  | 0, _ => ctx
+--  | suc n, nil => maybe R (maybeN n R nil ctx)
+--  | suc n, :: a L => maybe R (maybeN n a L ctx)
+--
+--\func varN {U : \Set} (n : Nat) (R1 R T : Type) (L : List Type) (ctx : U -> Type) (v : (MaybeN n U)) (h : maybeN n R L ctx v = T)
+--  : maybeN (suc n) R (L ++ (R1 :: nil)) ctx (justN n v) = T \elim n
+--  | 0 => h
+--  | suc n => cases (v arg addPath) \with {
+--    | nothing, p => \let x => rewrite p h \in x
+--    | just a => {?}
+--  }
+--
+----\func maybeN-eq {U : \Set} {n : Nat} {R : Type} {ctx : U -> Type} : maybe R (maybeN n R ctx) = maybeN (suc n) R ctx =>
+----  idp
+--
+----\func lemN {U : \Set} (n : Nat) (R : Type) (ctx : U -> Type) (x : U) : (maybeN n R ctx) (justN n x) = ctx x \elim n
+----  | 0 => idp
+----  | suc n => lemN n R ctx x
+--
+--\func lem3 {U : \Set} {S : Type} (R : Type) (x : Term U) (ctx : U -> Type) (h : hasType ctx x S)
+--  : hasType (maybe R ctx) (termMap just x) (S) \elim S, x, h
+--  | T, var v, varType p => varType p
+--  | Unit, unit, unitType => unitType
+--  | T, app f a, appType {S1} h1 h2 => \let c1 => (lem3 R f ctx h1) | c2 => (lem3 R a ctx h2) \in appType c1 c2
+--  | Arr S T, lam t, lamType h => {?} -- lamType (\let c1 => lem3 R t (maybe S ctx) h \in {?})
+--
+--\func lem3n {U : \Set} {n : Nat} {S R R1 : Type} (L : List Type) (x : Term (MaybeN n U)) (ctx : U -> Type)
+--            (h : hasType (maybeN n R L ctx) x S)
+--  : hasType (maybeN (suc n) R1 (R :: L) ctx) (termMap (justN n) x) (S) \elim n, S, x, h
+--  | 0, T, var v, varType p => varType (cases L \with {
+--    | nil => p
+--    | :: a L1 => p
+--  })
+--  | 0, Unit, unit, unitType => unitType
+--  | 0, T, app f a, appType {S'} h1 h2 => \let c1 => lem3n {U} {0} {Arr S' T} {R} {R1} L f ctx h1
+--                                              | c2 => (lem3n {U} {0} {S'} {R} {R1} L a ctx h2) \in appType c1 c2
+--  | 0, Arr S T, lam t, lamType h => {?}
+--  | suc n, T, var v, varType p => varType (cases L \with {
+--    | nil => {?}
+--    | :: a L1 => {?}
+--  })
+--  | suc n, Unit, unit, unitType => {?}
+--  | suc n, T, app f a, appType h1 h2 => {?}
+--  | suc n, Arr S T, lam t, lamType h => {?}
+----  | 0, T, x, p => {?} -- rewrite (inv (lem5 x)) p
+----  | suc n, T, var v, varType p => varType ({?})
+----  | suc n, Unit, unit, unitType => unitType
+----  | suc n, T, app f a, appType h1 h2 => \let c1 => lem3n {U} {suc n} f ctx h1 | c2 => (lem3n {U} {suc n} a ctx h2) \in appType c1 c2
+----  | suc n, Arr S T, lam t, lamType h => lamType (\let s => lem3n {Maybe U} {suc (suc n)} t (maybe S ctx) h \in {?})
+--
+----  | T, var v, varType p => varType p
+----  | Unit, unit, unitType => unitType
+----  | T, app f a, appType {S1} h1 h2 => \let c1 => (lem3 R f ctx h1) | c2 => (lem3 R a ctx h2) \in appType c1 c2
+----  | Arr S T, lam t, lamType h => {?}
+--
+--\func lem4 {U : \Set} {S : Type} (R : Type) (x : Term (Maybe U)) (ctx : U -> Type) (h : hasType (maybe S ctx) x S)
+--  : hasType (maybe S (maybe R ctx)) (termMap (maybe nothing (\lam x => just (just x))) x) S \elim S, x, h
+--  | T, var v, varType p => varType (cases (v arg addPath) \with {
+--    | nothing, _ => idp
+--    | just a, q => \let y => rewrite q p \in y
+--  })
+--  | Unit, unit, unitType => unitType
+--  | T, app f a, appType h1 h2 => {?}
+--  | Arr S T, lam t, lamType h => {?}
+--
+--\func id1 {X : \Type} (x : X) => x
+--
+--\func asdas {X : \Set} : id1 {Maybe X} = (maybe nothing (\lam v => just (id1 v))) => ext(\lam x => cases x \with {
+--  | nothing => idp
+--  | just a => idp
+--})
+--
+--\func lem5 {B : \Set} (a : Term B) : a = termMap id1 (a) \elim a
+--  | var v => idp
+--  | unit => idp
+--  | app a1 a2 => \let c1 => lem5 a1 | c2 => lem5 a2 \in rewrite (inv c1) (rewrite (inv c2) idp)
+--  | lam a => \let c1 => lem5 a | qwer => asdas {B} \in rewrite (inv qwer) (rewrite (inv c1) idp)
+--
+--\func lem2 {A B : \Set} (a : A -> Term B) (a1 : A) : liftM a (just a1) = termMap just (a a1) => idp
+
+\func substLem1 {V : \Set} {ctx : V -> Type} (t : Term (Maybe V))
+                {T S : Type} (h : hasType (maybe S ctx) t T) (a : Term V) (h1 : hasType ctx a S)
+  : hasType ctx (t >>= maybe a var) T => substLem (maybe S ctx) t T h ctx (maybe a var) (\lam x => cases x \with {
+  | nothing => h1
+  | just a1 => varType idp
+})
+
+-- 6. Докажите, что если Г |- a : A и Red a a', то Г |- a' : A
+
+\func redLem {V : \Set} {ctx : V -> Type} {a a' : Term V} (r : Red a a') {A : Type} (h : hasType ctx a A)
+  : hasType ctx a' A => redLem1 r.1 r.2 h
+  \where {
+    \func redLem1 {V : \Set} {ctx : V -> Type} {a a' : Term V} (n : Nat) (r : Red.Redn n a a') {A : Type} (h : hasType ctx a A)
+      : hasType ctx a' A \elim n, r
+      | 0, p => rewrite (inv p) h
+      | suc n, (v, r1, r2) => \let y => redLem1 n r1 h \in redLem2 r2 y
+
+    \func redLem2 {V : \Set} {ctx : V -> Type} {a a' : Term V} (r : Red1 a a') {A : Type} (h : hasType ctx a A)
+      : hasType ctx a' A \elim a, a', r, A, h
+      | app f a1, s, redBeta {f1} p p1, T, appType {S} h1 h2 => rewrite (inv p1) (\let h3 => rewrite p h1 \in cases (h3) \with {
+        | lamType h4 => cases (f1, h4) \with {
+          | var v, varType p2 => cases (v arg addPath) \with {
+            | nothing, q => \let w => rewrite q p2 \in rewrite (inv w) h2
+            | just a, q => \let w => rewrite q p2 \in varType w
+          }
+          | unit, q => cases (T arg addPath, q) \with {
+            | Unit, q1, unitType => unitType
+          }
+          | app f2 a, appType {S1} h5 h6 => appType (substLem1 f2 h5 a1 h2) (substLem1 a h6 a1 h2)
+          | lam t, z => \let w => substLem1 (lam t) z a1 h2 \in w
+        }
+      })
+      | app f a, app s s', redAppLeft r p, T, appType h1 h2 => \let x => redLem2 r h1 \in rewrite (inv p) (appType x h2)
+      | app f a, app s s', redAppRight p r, T, appType h1 h2 => \let x => redLem2 r h2 \in rewrite (inv p) (appType h1 x)
+      | lam t, lam s, redLam r, Arr S T, lamType h => \let x => redLem2 r h \in lamType x
+  }
+
+-- Optional
+-- 7. Докажите typeableInterp из лекции
