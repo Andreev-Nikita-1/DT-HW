@@ -20,7 +20,7 @@
     | app t1 t2 => app (t1 >>= k) (t2 >>= k)
     | lam t => lam (t >>= liftM k)
   }
-  | return-left => {?}
+  | return-left => \lam _ _ => idp
   | return-right => {?}
   | >>=-assoc => {?}
 
@@ -84,115 +84,73 @@
 
 \func substLem {U V : \Set} (ctx : U -> Type) (b : Term U) (B : Type) (h : hasType ctx b B)
                (ctx' : V -> Type) (a : U -> Term V) (h' : \Pi (u : U) -> hasType ctx' (a u) (ctx u))
-  : hasType ctx' (b >>= a) B => {?}
---  : hasType ctx' (b >>= a) B \elim b, B, h
---  | var v, T, varType p => rewrite (inv p) (h' v)
---  | unit, Unit, unitType => unitType
---  | app f a1, T, appType {S} h1 h2 => appType (substLem ctx f (Arr S T) h1 ctx' a h') (substLem ctx a1 S h2 ctx' a h')
---  | lam t, Arr S T, lamType h => lamType (substLem (maybe S ctx) t T h (maybe S ctx') (liftM a) (\lam u => cases u \with {
---    | nothing => varType idp
---    | just a1 => \let w => h' a1 \in cases (a a1 arg addPath) \with {
---      | var v, p => rewrite (lem2 a a1) (rewrite p (varType (cases (rewrite p w) \with {
---        | varType p1 => p1
---      })))
---      | unit, p => rewrite (lem2 a a1) (rewrite p (\let z => rewrite p w \in lem3 S unit ctx' z))
---      | app x1 x2, p => rewrite (lem2 a a1) (rewrite p (cases (rewrite p w) \with {
---        | appType x3 x4 => \let c1 => lem3 S x1 ctx' x3 | c2 => lem3 S x2 ctx' x4 \in appType c1 c2
---      }))
---      | lam x, p => rewrite (lem2 a a1) (lem3 S (a a1) ctx' w)
---    }
---  }))
---
---\func MaybeN (n : Nat) (U : \Set) : \Set \elim n
---  | 0 => U
---  | suc n => Maybe (MaybeN n U)
---
---\func justN {U : \Set} (n : Nat) : (MaybeN n U) ->  MaybeN (suc n) U \elim n
---  | 0 => just
---  | suc n => maybe nothing (\lam x => just (justN n x))
---
-----\func justN-eq {U : \Set} {n : Nat} : (\lam (x : U) => just (justN n x)) = justN (suc n) => idp
---
---\func maybeN {U : \Set} (n : Nat) (R : Type) (L : List Type) (ctx : U -> Type) : (MaybeN n U) -> Type \elim n, L
---  | 0, _ => ctx
---  | suc n, nil => maybe R (maybeN n R nil ctx)
---  | suc n, :: a L => maybe R (maybeN n a L ctx)
---
---\func varN {U : \Set} (n : Nat) (R1 R T : Type) (L : List Type) (ctx : U -> Type) (v : (MaybeN n U)) (h : maybeN n R L ctx v = T)
---  : maybeN (suc n) R (L ++ (R1 :: nil)) ctx (justN n v) = T \elim n
---  | 0 => h
---  | suc n => cases (v arg addPath) \with {
---    | nothing, p => \let x => rewrite p h \in x
---    | just a => {?}
---  }
---
-----\func maybeN-eq {U : \Set} {n : Nat} {R : Type} {ctx : U -> Type} : maybe R (maybeN n R ctx) = maybeN (suc n) R ctx =>
-----  idp
---
-----\func lemN {U : \Set} (n : Nat) (R : Type) (ctx : U -> Type) (x : U) : (maybeN n R ctx) (justN n x) = ctx x \elim n
-----  | 0 => idp
-----  | suc n => lemN n R ctx x
---
---\func lem3 {U : \Set} {S : Type} (R : Type) (x : Term U) (ctx : U -> Type) (h : hasType ctx x S)
---  : hasType (maybe R ctx) (termMap just x) (S) \elim S, x, h
---  | T, var v, varType p => varType p
---  | Unit, unit, unitType => unitType
---  | T, app f a, appType {S1} h1 h2 => \let c1 => (lem3 R f ctx h1) | c2 => (lem3 R a ctx h2) \in appType c1 c2
---  | Arr S T, lam t, lamType h => {?} -- lamType (\let c1 => lem3 R t (maybe S ctx) h \in {?})
---
---\func lem3n {U : \Set} {n : Nat} {S R R1 : Type} (L : List Type) (x : Term (MaybeN n U)) (ctx : U -> Type)
---            (h : hasType (maybeN n R L ctx) x S)
---  : hasType (maybeN (suc n) R1 (R :: L) ctx) (termMap (justN n) x) (S) \elim n, S, x, h
---  | 0, T, var v, varType p => varType (cases L \with {
---    | nil => p
---    | :: a L1 => p
---  })
---  | 0, Unit, unit, unitType => unitType
---  | 0, T, app f a, appType {S'} h1 h2 => \let c1 => lem3n {U} {0} {Arr S' T} {R} {R1} L f ctx h1
---                                              | c2 => (lem3n {U} {0} {S'} {R} {R1} L a ctx h2) \in appType c1 c2
---  | 0, Arr S T, lam t, lamType h => {?}
---  | suc n, T, var v, varType p => varType (cases L \with {
---    | nil => {?}
---    | :: a L1 => {?}
---  })
---  | suc n, Unit, unit, unitType => {?}
---  | suc n, T, app f a, appType h1 h2 => {?}
---  | suc n, Arr S T, lam t, lamType h => {?}
-----  | 0, T, x, p => {?} -- rewrite (inv (lem5 x)) p
-----  | suc n, T, var v, varType p => varType ({?})
-----  | suc n, Unit, unit, unitType => unitType
-----  | suc n, T, app f a, appType h1 h2 => \let c1 => lem3n {U} {suc n} f ctx h1 | c2 => (lem3n {U} {suc n} a ctx h2) \in appType c1 c2
-----  | suc n, Arr S T, lam t, lamType h => lamType (\let s => lem3n {Maybe U} {suc (suc n)} t (maybe S ctx) h \in {?})
---
-----  | T, var v, varType p => varType p
-----  | Unit, unit, unitType => unitType
-----  | T, app f a, appType {S1} h1 h2 => \let c1 => (lem3 R f ctx h1) | c2 => (lem3 R a ctx h2) \in appType c1 c2
-----  | Arr S T, lam t, lamType h => {?}
---
---\func lem4 {U : \Set} {S : Type} (R : Type) (x : Term (Maybe U)) (ctx : U -> Type) (h : hasType (maybe S ctx) x S)
---  : hasType (maybe S (maybe R ctx)) (termMap (maybe nothing (\lam x => just (just x))) x) S \elim S, x, h
---  | T, var v, varType p => varType (cases (v arg addPath) \with {
---    | nothing, _ => idp
---    | just a, q => \let y => rewrite q p \in y
---  })
---  | Unit, unit, unitType => unitType
---  | T, app f a, appType h1 h2 => {?}
---  | Arr S T, lam t, lamType h => {?}
---
---\func id1 {X : \Type} (x : X) => x
---
---\func asdas {X : \Set} : id1 {Maybe X} = (maybe nothing (\lam v => just (id1 v))) => ext(\lam x => cases x \with {
---  | nothing => idp
---  | just a => idp
---})
---
---\func lem5 {B : \Set} (a : Term B) : a = termMap id1 (a) \elim a
---  | var v => idp
---  | unit => idp
---  | app a1 a2 => \let c1 => lem5 a1 | c2 => lem5 a2 \in rewrite (inv c1) (rewrite (inv c2) idp)
---  | lam a => \let c1 => lem5 a | qwer => asdas {B} \in rewrite (inv qwer) (rewrite (inv c1) idp)
---
---\func lem2 {A B : \Set} (a : A -> Term B) (a1 : A) : liftM a (just a1) = termMap just (a a1) => idp
+  : hasType ctx' (b >>= a) B \elim b, B, h
+  | var v, T, varType p => rewrite (inv p) (h' v)
+  | unit, Unit, unitType => unitType
+  | app f a1, T, appType {S} h1 h2 => appType (substLem ctx f (Arr S T) h1 ctx' a h') (substLem ctx a1 S h2 ctx' a h')
+  | lam t, Arr S T, lamType h => lamType (substLem (maybe S ctx) t T h (maybe S ctx') (liftM a) (\lam u => cases u \with {
+    | nothing => varType idp
+    | just a1 => \let w => h' a1 \in cases (a a1 arg addPath) \with {
+      | var v, p => rewrite (lem2 a a1) (rewrite p (varType (cases (rewrite p w) \with {
+        | varType p1 => p1
+      })))
+      | app x1 x2, p => rewrite (lem2 a a1) (rewrite p (cases (rewrite p w) \with {
+        | appType {S1} x3 x4 => \let c1 =>  lem3n V (Arr S1 (ctx a1)) S 0 x1 ctx' x3
+                                     | c2 => lem3n V S1 S 0 x2 ctx' x4
+                                \in rewrite (inv(mb0=mb V S ctx')) (appType c1 c2)
+      }))
+      | lam x, p => rewrite (lem2 a a1) (rewrite (inv(mb0=mb V S ctx')) (lem3n V (ctx a1) S 0 (a a1) ctx' w))
+      | unit, p => rewrite (lem2 a a1) (rewrite p (\let z => rewrite p w \in rewrite (inv(mb0=mb V S ctx'))
+          (lem3n V (ctx a1) S 0 unit ctx' z)))
+    }
+  }))
+
+\func MaybeN (n : Nat) (U : \Set) : \Set \elim n
+  | 0 => U
+  | suc n => Maybe (MaybeN n U)
+
+\func justN {U : \Set} (n : Nat) : (MaybeN n U) ->  MaybeN (suc n) U \elim n
+  | 0 => just
+  | suc n => maybe nothing (\lam x => just (justN n x))
+
+\func maybeN {U : \Set} (n : Nat) (R : Type) (ctx : (MaybeN n U) -> Type) (z : MaybeN (suc n) U) : Type \elim n, z
+  | 0, nothing => R
+  | 0, just a => ctx a
+  | suc n, nothing => ctx nothing
+  | suc n, just a => maybeN n R (\lam x => ctx (just x)) a
+
+\func mb0=mb (U : \Set) (R : Type) (ctx :  U -> Type)
+  : maybeN 0 R ctx = maybe R ctx => ext (\lam x => cases x \with {
+  | nothing => idp
+  | just a => idp
+})
+
+\func maybeN-lem {U : \Set} (n : Nat) (R : Type) (ctx : (MaybeN n U) -> Type) (z : MaybeN n U)
+  : maybeN n R ctx (justN n z) = ctx z \elim n, z
+  | 0, z => idp
+  | suc n, nothing => idp
+  | suc n, just a => maybeN-lem n R (\lam x => ctx (just x)) a
+
+\func maybe-S-maybeN-R {U : \Set} (n : Nat) (R S : Type) (ctx : (MaybeN n U) -> Type) (z : MaybeN (suc (suc n)) U)
+  : maybeN (suc n) R (maybe S ctx) z = (maybe S (maybeN n R ctx)) z \elim n, z
+  | 0, nothing => idp
+  | 0, just a => idp
+  | suc n, nothing => idp
+  | suc n, just a => idp
+
+\func mSmR {U : \Set} (n : Nat) (R S : Type) (ctx : (MaybeN n U) -> Type)
+  : maybeN (suc n) R (maybe S ctx) = (maybe S (maybeN n R ctx)) => ext (maybe-S-maybeN-R n R S ctx)
+
+\func lem3n (U : \Set) (S R : Type) (n : Nat) (x : Term (MaybeN n U)) (ctx : (MaybeN n U) -> Type) (h : hasType ctx x S)
+  : hasType (maybeN n R ctx) (termMap (justN n) x) (S) \elim S, n, x, h
+  | T, n, var v, varType p => \let s => maybeN-lem n R ctx v \in varType (s *> p)
+  | Unit, n, unit, unitType => unitType
+  | T, n, app f a, appType {S1} h1 h2 => \let c1 => lem3n U (Arr S1 T) R n f ctx h1
+                                              | c2 => lem3n U S1 R n a ctx h2 \in appType c1 c2
+  | Arr S T, n, lam t, lamType h => lamType (\let s => lem3n U T R (suc n) t (maybe S ctx) h \in
+    \let y => (mSmR n R S ctx) \in rewrite (inv y) (lem3n U T R (suc n) t (maybe S ctx) h))
+
+\func lem2 {A B : \Set} (a : A -> Term B) (a1 : A) : liftM a (just a1) = termMap just (a a1) => idp
 
 \func substLem1 {V : \Set} {ctx : V -> Type} (t : Term (Maybe V))
                 {T S : Type} (h : hasType (maybe S ctx) t T) (a : Term V) (h1 : hasType ctx a S)
