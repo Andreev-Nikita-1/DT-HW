@@ -82,7 +82,7 @@
   | 0, 0 => \lam s => contradiction
   | 0, suc m => contradiction
   | suc n, 0 => contradiction
-  | suc n1, suc m1 => lem1 (pmap pred p)
+  | suc n1, suc m1 => lem1 {n1} {m1} (pmap pred p)
 
 \func ReflClosure_<-isProp (n m : Nat) : isProp (ReflClosure (\lam x y => T (x < y)) n m) =>
   \lam p q => \case \elim p, \elim q \with {
