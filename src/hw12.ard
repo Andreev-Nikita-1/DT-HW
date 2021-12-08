@@ -1,0 +1,150 @@
+\import Logic (TruncP, inP)
+\import Logic.Meta
+\import Meta
+\import Paths (inv)
+\import Paths.Meta
+\import Utils
+\import hw07
+\import lect03
+\import lect12
+
+-- 1. Определите функцию negPred : Int -> Int такую, что negPred x = x, если x > 0, и negPred x = x - 1, если x <= 0.
+
+\func negPred (x : Int) : Int \elim x
+  | pos (suc n) => pos (suc n)
+  | neg n => neg (suc n)
+  | pos 0 => neg 1
+
+-- 2. Определите функции сложения и умножения для Int.
+
+\func sucInt (x : Int) : Int \elim x
+  | pos n => pos (suc n)
+  | neg (suc n) => neg n
+
+\func predInt (x : Int) : Int \elim x
+  | pos (suc n) => pos n
+  | neg n => neg (suc n)
+  | pos 0 => neg 1
+
+\func \infixl 6 + (x y : Int) : Int \elim x, y
+  | pos (suc n), y => sucInt (pos n + y)
+  | neg (suc n), y => predInt (neg n + y)
+  | pos 0, y => y
+
+\func \infix 6 - (x y : Int) : Int \elim x, y
+  | n, pos n1 => n + neg n1
+  | n, neg n1 => n + pos n1
+
+\func \infixl 7 * (x y : Int) : Int \elim x, y
+  | pos (suc n), y => pos n * y + y
+  | neg (suc n), y => neg n * y - y
+  | pos 0, y => pos 0
+
+-- 3. Определите тип данных BinNat для бинарных натуральных чисел.
+--    У него должно быть три конструктора: для 0, для чисел вида 2*n и чисел вида 2*n+1.
+--    Такой тип данных содержит несколько различных представлений для нуля.
+--    Используйте типы данных с условиями, чтобы вычислительно отождествить различные нули.
+
+\data BinNat
+  | zero
+  | two*n (n : BinNat) \with {
+    | zero => zero
+  }
+  | two*n+1 (n : BinNat)
+
+-- 4. Докажите, что функция pred сюръективна.
+
+\func pred (n : Nat) : Nat
+  | 0 => 0
+  | suc n => n
+
+\func pred-is-sur : isSur pred => \lam n => inP (suc n, idp)
+
+
+-- 5. Докажите, что функция suc не сюръективна.
+
+\func suc-is-not-sur (p : isSur suc) : Empty => \let s => p 0 \in \case s \with {
+  | inP a => absurd (z!=suc a.1 a.2)
+} \where {
+  \func z!=suc (n : Nat) : Not (suc n = 0) => \lam p => true/=false (pmap (\lam z => \case z \with {
+    | 0 => false
+    | suc n => true
+  }) p)
+
+  -- 6. Пусть f : A -> B и g : B -> C ─ некоторые функции.
+  --    Докажите, что если f и g сюръективны, то g `o` f также сюръективна.
+  --    Докажите, что если g `o` f сюръективна, то g также сюръективна.
+
+  \func \fixr 9 o {A B C : \Type} (g : B -> C) (f : A -> B) => \lam a => g (f a)
+
+  \func o-sur {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur f) (q : isSur g) : isSur (g `o` f) =>
+    \lam c => \let s1 => q c \in \case \elim s1 \with {
+      | inP (b, t) => \let s2 => p b \in \case \elim s2 \with {
+        | inP (a, t') => inP (a, pmap g t' *> t)
+      }
+    }
+
+  \func o-sur' {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur (g `o` f)) : isSur g =>
+    \lam c => \let s => p c \in \case \elim s \with {
+      | inP (a, t) => inP (f a, t)
+    }
+
+  -- 7. Определите множество конечных подмножеств множества A, то есть списков элементов A с точностью до перестановок и повторений элементов.
+
+  \truncated \data Set (A : \Set) : \Set
+    | in (List A)
+    | quot {l1 l2 : List A} (r : R l1 l2) (i : I) \elim i {
+      | left => in l1
+      | right => in l2
+    }
+    \where {
+      \func R {A : \Set} (l1 l2 : List A) : \Prop => \Sigma (isSubset l1 l2) (isSubset l2 l1)
+
+      \func isSubset {A : \Set} (l1 l2 : List A) : \Prop \elim l1
+        | nil => \Sigma
+        | :: a l1 => \Sigma (inSet a l2) (isSubset l1 l2)
+
+      \func inSet {A : \Set} (a : A) (l : List A) : \Prop \elim l
+        | nil => Empty
+        | :: a1 l1 => TruncP (Either (a = a1) (inSet a l1))
+    }
+}
+
+-- 8. Докажите теорему Кантора.
+
+-- Теорема Кантора говорит, что для любого множества A мощность множества его подмножеств строго больше, чем мощность A.
+
+-- Множество подмножеств можно определить следующим образом:
+
+\func Subs (A : \Set) => A -> \Prop
+
+-- Формально утверждение теоремы Кантора состоит из двух частей:
+-- "существует инъекция из A в Subs A" и "не существует сюръекции из A в Subs A".
+
+\func cantor1 (A : \Set) : \Sigma (f : A -> Subs A) (isInj f) =>
+  (\lam x y => x = y, \lam p q s => \let t =>  pmap (__ q) s \in rewrite t idp)
+
+\func cantor2 (A : \Set) (f : A -> Subs A) (p : isSur f) : Empty =>
+  \let s => \lam a => Not (f a a) | q => p s \in \case \elim q \with {
+    | inP (q, t) => \let p1 => \lam (x : f q q) => rewrite t x
+                         | p2 => \lam (x : Not (f q q)) => rewrite (pmap (__ q) t) x
+                         | p3 => \lam (x : Not(f q q) -> Empty) => \lam (y : f q q) => x (p1 y)
+                    \in contrProp p2 p3
+  }
+
+-- 9. Докажите, что in~ является сюръекцией.
+
+\func in~-sur {A : \Type} {R : A -> A -> \Type} : isSur (in~ {A} {R}) => \lam b => \case \elim b \with {
+  | in~ a => inP (a, idp)
+}
+
+-- Optional
+-- 10. Постройте функции Nat -> BinNat и BinNat -> Nat и докажите, что они взаимно обратны.
+
+\func NatToBinNat (n : Nat) : BinNat => {?}
+
+\func BinNatToNat (b : BinNat) : Nat => {?}
+
+\func nbn (n : Nat) : BinNatToNat (NatToBinNat n) = n => {?}
+
+\func bnb (b : BinNat) : NatToBinNat (BinNatToNat b) = b => {?}
