@@ -1,0 +1,511 @@
+\import Arith.Nat (NatSemiring)
+\import Data.Bool (and)
+\import Logic (TruncP, inP, propExt)
+\import Logic.Meta
+\import Meta
+\import Order.LinearOrder
+\import Paths (inv)
+\import Paths.Meta
+\import Set
+\import Utils
+\import hw12
+\import lect07 (<=-refl, <=-step, LessOrEq, LessOrEq', filter)
+\import lect10 (isProp)
+\import lect12
+\import lect13
+
+-- 1. Докажите, что add x (add x s) = add x s и add x (add y s) = add y (add x s)
+
+\func add-idemp {S : SetSpec} (x : S.A) (s : S) : add x (add x s) = add x s =>
+  setExt (add x (add x s)) (add x s) (\lam y => (\lam p => \case addProp p \with {
+    | byLeft a => rewrite a addHead
+    | byRight b => b
+  } , addTail))
+
+\func add-swap {S : SetSpec} (x y : S.A) (s : S) : add x (add y s) = add y (add x s) =>
+  setExt (add x (add y s)) (add y (add x s)) (\lam z => (
+    \lam p => \case addProp p \with {
+      | byLeft a => rewrite a (addTail addHead)
+      | byRight b => \case addProp b \with {
+        | byLeft a => rewrite a addHead
+        | byRight b1 => addTail (addTail b1)
+      }
+    }, \lam p => \case addProp p \with {
+      | byLeft a => rewrite a (addTail addHead)
+      | byRight b => \case addProp b \with {
+        | byLeft a => rewrite a addHead
+        | byRight b1 => addTail (addTail b1)
+      }
+    }))
+
+-- 2. Докажите, что множество подмножеств является инстансом SetSpec
+
+\func subsets {A : \Set} : SetSpec {A} (A -> \Prop) => \new SetSpec {
+  | emptySet x => Empty
+  | add x s => \lam y => Or (y = x) (s y)
+  | isElem a s => s a
+  | setExt s s' f => ext (\lam z => ext (f z))
+  | emptySetProp a => \lam e => e
+  | addHead => byLeft idp
+  | addTail => byRight
+  | addProp s => s
+}
+
+-- 3. Докажите, что множество подмножеств является наибольшим инстансом, то есть любой другой вкладывается в него.
+
+\func subsets-largest (S : SetSpec) : \Sigma (f : S -> (S.A -> \Prop)) (isInj f) =>
+  (\lam s a => S.isElem a s, \lam p q t => S.setExt p q (\lam x => \let r => pmap (__ x) t \in rewrite r (\lam b => b,\lam b => b)))
+
+-- 4. Определите функцию isEmpty для произвольного конечного множества и для ListSet.
+
+\func isEmptySet {S : FinSetSpec} (s : S) : Bool =>
+  \have t => lem {S} s (S.setFin s) \in \case TruncP.remove lem2 t \with {
+    | inl a => true
+    | inr b => false
+  }
+  \where {
+    \lemma lem {S : FinSetSpec} (s : S) (x : ∃ (xs : List S.A) (\Pi (x : S.A) -> isElem x s <-> In x xs)) : TruncP(Either (\Pi (x : S.A) -> Not (isElem x s)) (Not (\Pi (x : S.A) -> Not (isElem x s)))) \elim x
+      | inP (xs, f) => cases (xs arg addPath) \with {
+        | nil, p => inP (inl (\lam x s => \let q => (f x).1 s | q1 => rewrite p q \in contradiction))
+        | :: a l, p => inP (inr (\lam q => \let t => q a | t1 => (f a).2 (rewrite p (here idp)) \in t t1))
+      }
+
+    \func lem2 {A : \Prop} : isProp(Either A (Not A)) => \lam p q => cases(p, q) \with {
+      | inl a, inl a1 => pmap inl (Path.inProp a a1)
+      | inl a, inr b => absurd (b a)
+      | inr b, inl a => absurd (b a)
+      | inr b, inr b1 => pmap inr ext
+    }
+  }
+
+\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool => \case x \with {
+  | in~ a => f a
+  | ~-quot {a} {a'} r i => (lem a a' r) @ i
+}
+  \where {
+    \func f {A : \Set} (a : List A) : Bool \elim a
+      | nil => true
+      | :: a a1 => false
+
+    \func lem {A : \Set} (a b : List A) (r : EqList {A} a b) : f a = f b \elim a, b
+      | nil, nil => idp
+      | nil, :: a b => \let t => (r a).2 (here idp) \in contradiction
+      | :: a a1, nil => \let t => (r a).1 (here idp) \in contradiction
+      | :: a a1, :: a2 b => idp
+  }
+
+-- 5. Определите функцию union {A : \Set} : S A -> S A -> S A для произвольного S A (удовлетворяющего FinSetSpec) и для ListSet.
+
+\func union {A : \Set} {S : \Set -> \Set} {FSS : FinSetSpec {A} (S A)} (a b : S A) : S A =>
+  \let f => isInj+isSur->isBij (listSetToSet {FSS}) listSetToSet-inj listSetToSet-sur | g => f.1 \in listSetToSet (union' (g a) (g b))
+
+\func union' {A : \Set} (a b : ListSet A) : ListSet A \elim a, b
+  | in~ a, in~ a1 => in~ (a ++ a1)
+  | in~ a, ~-quot {b1} {b2} r i => quotientEq (a ++ b1)  (a ++ b2) (lem a b1 b2 r) @ i
+  | ~-quot {a1} {a2} r i, in~ b => quotientEq (a1 ++ b)  (a2 ++ b) (lem1 a1 a2 b r) @ i
+  \where {
+    \func lem {A : \Set} (a b1 b2 : List A) (r : EqList b1 b2) : EqList (a ++ b1) (a ++ b2) =>
+      \lam s => (\case (lem2 a b1 s __) \with {
+        | byLeft a1 => lem3 a b2 s (byLeft a1)
+        | byRight b => lem3 a b2 s (byRight ((r s).1 b))
+      }, \case (lem2 a b2 s __) \with {
+        | byLeft a1 => lem3 a b1 s (byLeft a1)
+        | byRight b => lem3 a b1 s (byRight ((r s).2 b))
+      })
+
+    \func lem1 {A : \Set} (a1 a2 b : List A) (r : EqList a1 a2) : EqList (a1 ++ b) (a2 ++ b) =>
+      \lam s => (\case (lem2 a1 b s __) \with {
+        | byLeft a => lem3 a2 b s (byLeft ((r s).1 a))
+        | byRight b1 => lem3 a2 b s (byRight b1)
+      },\case (lem2 a2 b s __) \with {
+        | byLeft a => lem3 a1 b s (byLeft ((r s).2 a))
+        | byRight b1 => lem3 a1 b s (byRight b1)
+      })
+
+    \func lem2 {A : \Set} (a b : List A) (x : A) (s : In x (a ++ b)) : Or (In x a) (In x b) \elim a
+      | nil => byRight s
+      | :: a a1 => \case s \with {
+        | here p => byLeft (here p)
+        | there i => \case (lem2 a1 b x i) \with {
+          | byLeft a2 => byLeft (there a2)
+          | byRight b1 => byRight b1
+        }
+      }
+
+    \func lem3 {A : \Set} (a b : List A) (x : A) (s : Or (In x a) (In x b)) : In x (a ++ b) \elim a
+      | nil => \case s \with {
+        | byLeft a => contradiction
+        | byRight b1 => b1
+      }
+      | :: a a1 => \case s \with {
+        | byLeft q => \case q \with {
+          | here p => here p
+          | there i => there (lem3 a1 b x (byLeft i))
+        }
+        | byRight b1 => there (lem3 a1 b x (byRight b1))
+      }
+  }
+
+
+-- 6. Определите функцию intersection {A : DecSet} : S A -> S A -> S A для произвольного S A (удовлетворяющего FinSetSpec) и для ListSet.
+
+\func intersecion {A : DecSet} {S : \Set -> \Set} {FSS : FinSetSpec {A} (S A)} (a b : S A) : S A =>
+  \let f => isInj+isSur->isBij (listSetToSet {FSS}) listSetToSet-inj listSetToSet-sur | g => f.1 \in listSetToSet (intersection' (g a) (g b))
+
+\func intersection' {A : DecSet} (a b : ListSet A) : ListSet A \elim a, b
+  | in~ a, in~ b => in~ (filter (in b) a)
+  | in~ a, ~-quot {b1} {b2} r i => pmap in~ (filterLem a b1 b2 r) @ i
+  | ~-quot {a1} {a2} r i, in~ b => ListSetSet.setExt (in~ (filter (in b) a1 )) (in~ (filter (in b) a2)) (\lam x => propExtRev(
+    propExt1(inLem (filter (in b) a1) x) *>
+    propExt1(inLem2 a1 a2 b r x, inLem2 a2 a1 b (\lam y => \let s => r y \in (s.2, s.1)) x) *>
+    inv(propExt1(inLem (filter (in b) a2) x))
+  )) @ i
+
+  \where {
+    \func propExt1 {A B : \Prop} (q : A <-> B) : A = B => propExt q.1 q.2
+
+    \func propExtRev {A B : \Prop} (q : A = B) : A <-> B => (\lam s => rewriteF q s, \lam s => rewriteF (inv q) s)
+
+    \func in {A : DecSet} (a : List A) (x : A) : Bool \elim a
+      | nil => false
+      | :: a a1 => \case (A.decideEq a x) \with {
+        | yes e => true
+        | no n => in a1 x
+      }
+
+    \func inLem {A : DecSet} (b : List A) (x : A) : In x b <-> (in b x = true) \elim b
+      | nil => (\lam s => contradiction, contradiction)
+      | :: b0 bs => (\lam s => cases(A.decideEq b0 x) \with {
+        | yes e => idp
+        | no n => \case s \with {
+          | here p => contradiction
+          | there i => (inLem bs x).1 i
+        }
+      }, cases(A.decideEq b0 x) \with {
+        | yes e => \lam _ => here (inv e)
+        | no n => \lam s => there ((inLem bs x).2 s)
+      })
+
+    \func inLem1 {A : DecSet} (a1 a2 : List A) (r : EqList a1 a2) (x : A) : (in a1 x = true) <-> (in a2 x = true) =>
+      propExtRev(inv (propExt1(inLem a1 x)) *> propExt1(r x) *> propExt1(inLem a2 x))
+
+    \func inLem2 {A : DecSet} (a1 a2 b : List A) (r : EqList a1 a2) (x : A) : (in (filter (in b) a1) x = true) -> (in (filter (in b) a2) x = true) =>
+      \lam s => \let t => lemb-> a1 b x s | t1 => (inLem1 a1 a2 r x).1 (lema-> a1 b x s) \in lem<- a2 b x t1 t
+
+    \func filterLem {A : DecSet} (a b1 b2 : List A) (r : EqList b1 b2) : filter (in b1) a = filter (in b2) a \elim a
+      | nil => idp
+      | :: a a1 => cases(in b1 a arg addPath, in b2 a arg addPath) \with {
+        | true, _, true, _ => pmap (:: a __) (filterLem a1 b1 b2 r)
+        | true, p, false, q => \let t => (r a).1 ((inLem b1 a).2 p) | s => (inLem b2 a).1 t \in contradiction
+        | false, p, true, q => \let t => (r a).2 ((inLem b2 a).2 q) | s => (inLem b1 a).1 t \in contradiction
+        | false, _, false, _ => filterLem a1 b1 b2 r
+      }
+
+    \func lemb-> {A : DecSet} (a b : List A) (x : A) (m : in (filter (in b) a) x = true) : in b x = true \elim a
+      | nil => contradiction
+      | :: a0 as => cases(in b a0 arg addPath, A.decideEq a0 x arg addPath) \with {
+        | true, p, yes e, q => rewriteI e p
+        | true, p, no n, q => \let s => rewrite q (rewrite p m) \in lemb-> as b x s
+        | false, p, _, _ => \let s => rewrite p m \in  lemb-> as b x s
+      }
+
+    \func lema-> {A : DecSet} (a b : List A) (x : A) (m : in (filter (in b) a) x = true) : in a x = true \elim a
+      | nil => contradiction
+      | :: a0 as => cases(A.decideEq a0 x arg addPath) \with {
+        | yes e, p => idp
+        | no n, p => cases(in b a0 arg addPath) \with {
+          | true, q => \let s1 => rewrite q m | s2 => rewrite p s1 \in lema-> as b x s2
+          | false, q => \let s1 => rewrite q m \in lema-> as b x s1
+        }
+      }
+
+    \func lem1 {A : DecSet} (a b : List A) (x x' : A) (q : in b x' = true) (p : x = x') : in (filter (in b) (x :: a)) x' = true \elim p
+      | idp => cases (in b x arg addPath) \with {
+        | true, _ => cases (decideEq x x) \with {
+          | yes e => idp
+          | no n => contradiction
+        }
+        | false, t => contradiction
+      }
+
+    \func lem2 {A : DecSet} (a : List A) (x a0 : A) (m : in (a0 :: a) x = true) (n : Logic.Not (a0 = x)) : in a x = true =>
+      cases (A.decideEq a0 x arg addPath) \with {
+        | yes e, _ => contradiction
+        | no n1, p => rewriteF p m
+      }
+
+    \func lem<- {A : DecSet} (a b : List A) (x : A) (m1 : in a x = true) (m2 : in b x = true) : in (filter (in b) a) x = true \elim a
+      | nil => m1
+      | :: a0 as => cases(A.decideEq a0 x arg addPath) \with {
+        | yes e, p => lem1 as b a0 x m2 e
+        | no n, p => \let t => lem2 as x a0 m1 n \in cases(in b a0 arg addPath) \with {
+          | true, q => rewrite p (lem<- as b x t m2)
+          | false, q => lem<- as b x t m2
+        }
+      }
+  }
+
+-- 7. Мы не можем определить функция size в общем случае, но мы можем определить предикат S -> Nat -> \Prop, соответствующий \lam xs n => size xs <= n.
+--    Задайте этот предикат и докажите, что он эквивалентен обычному определению, если A -- разрешимо и S -- конечно.
+
+\func size__<=n {SS : SetSpec} (s : SS) (n : Nat) : \Prop =>
+  ∃ (l : List SS.A) (p : TruncP(LessOrEq' (length l) n)) (s : \Pi (x : SS.A) -> SS.isElem x s <-> In x l)
+
+\func size {A : DecSet} (s : ListSet A) : Nat \elim s
+  | in~ a => length (unique a nil)
+  | ~-quot {a} {b} r i => \let t => uniqueLem (unique a nil) (unique b nil) (uniqueEq2 a b r) (uniqueIsUnique a nil ()) (uniqueIsUnique b nil ()) \in t @ i
+  \where {
+    \func unique {A : DecSet} (s acc : List A) : List A \elim s
+      | nil => acc
+      | :: a s => \case (intersection'.in acc a) \with {
+        | true => unique s acc
+        | false => unique s (a :: acc)
+      }
+
+    \func uniqueLen {A : DecSet} (as acc : List A) : LessOrEq' (length (unique as acc)) ((length as) Nat.+ (length acc)) \elim as
+      | nil => LessOrEq'.<=-refl idp
+      | :: a as => cases(intersection'.in acc a) \with {
+        | true => \let t => uniqueLen as acc \in <=-step t
+        | false => \let t => uniqueLen as (a :: acc) \in t
+      }
+
+    \func isUnique {A : DecSet} (s : List A) : \Prop \elim s
+      | nil => \Sigma
+      | :: a s => \Sigma ((intersection'.in s a) = false) (isUnique s)
+
+    \func uniqueIsUnique {A : DecSet} (s acc : List A) (p : isUnique acc) : isUnique (unique s acc) \elim s
+      | nil => p
+      | :: a s => cases(intersection'.in acc a arg addPath) \with {
+        | true, _ => uniqueIsUnique s acc p
+        | false, q => \let (t : isUnique (a :: acc) = true) => idp \in uniqueIsUnique s (a :: acc) (q, p)
+      }
+
+    \func uniqueEq {A : DecSet} (as acc : List A) (a0 x : A) : (Or (In x (a0 :: as)) (In x acc)) <-> (Or (In x as) (In x (a0 :: acc))) =>
+      (\lam s => \case s \with {
+        | byLeft a => \case a \with {
+          | here p => byRight (here p)
+          | there i => byLeft i
+        }
+        | byRight b => byRight (there b)
+      }, \lam s => \case s \with {
+        | byLeft a => byLeft (there a)
+        | byRight b => \case b \with {
+          | here p => byLeft (here p)
+          | there i => byRight i
+        }
+      })
+
+    \func uniqueEq' {A : DecSet} (as acc : List A) (x : A) : Or (In x as) (In x acc) <-> In x (unique as acc) \elim as
+      | nil => (\case __ \with {
+        | byLeft a => contradiction
+        | byRight b => b
+      }, byRight)
+      | :: a as => (\case __ \with{
+        | byLeft a1 => cases(intersection'.in acc a arg addPath) \with {
+          | true, p => \case a1 \with {
+            | here p1 => \let t => (intersection'.inLem acc a).2 p \in rewrite p1 ((uniqueEq' as acc a).1 (byRight t))
+            | there i => (uniqueEq' as acc x).1 (byLeft i)
+          }
+          | false, p => \case a1 \with {
+            | here p1 => (uniqueEq' as (a :: acc) x).1 (byRight (here p1))
+            | there i => (uniqueEq' as (a :: acc) x).1 (byLeft i)
+          }
+        }
+        | byRight b => \let t => uniqueEq' as acc x \in cases(intersection'.in acc a) \with {
+          | true => t.1 (byRight b)
+          | false => \let t1 => uniqueEq' as (a :: acc) x \in t1.1 (byRight (there b))
+        }
+      }, \lam s => cases(intersection'.in acc a arg addPath) \with {
+        | true, p => \let s1 => rewrite p s | t1 => uniqueEq' as acc x \in \case (t1.2 s1) \with {
+          | byLeft a1 => byLeft (there a1)
+          | byRight b => byRight b
+        }
+        | false, p => \let s1 => rewrite p s | t1 => uniqueEq' as (a :: acc) x | t2 => t1.2 s1 \in \case t2 \with {
+          | byLeft a1 => byLeft (there a1)
+          | byRight b => \case b \with {
+            | here p1 => byLeft (here p1)
+            | there i => byRight i
+          }
+        }
+      })
+
+    \func uniqueEq1 {A : DecSet} (as : List A) : EqList as (unique as nil) \elim as
+      | nil => \lam x => (\lam s => s, \lam s => s)
+      | :: a0 as => \lam x => \let t => uniqueEq as nil a0 x | t1 => uniqueEq' as (a0 :: nil) x \in (\lam s => t1.1 (t.1 (byLeft s)), \lam s => \case t.2 (t1.2 s) \with {
+        | byLeft a => a
+        | byRight b => contradiction
+      })
+
+    \func uniqueEq2 {A : DecSet} (as bs : List A) (r : EqList as bs) : EqList (unique as nil) (unique bs nil) =>
+      \lam x => \let t1 => uniqueEq1 as x | t2 =>  uniqueEq1 bs x \in (\lam s => t2.1 ((r x).1 (t1.2 s)), \lam s => t1.1 ((r x).2 (t2.2 s)))
+
+    \func replace {A : DecSet} (s : List A) (x by : A) : List A\elim s
+      | nil => nil
+      | :: a s => \case (A.decideEq a x) \with {
+        | yes e => by :: (replace s x by)
+        | no n => a :: (replace s x by)
+      }
+
+    \func replaceLem0 {A : DecSet} (bs : List A) (a0 b0 x : A) (q : Not(x = a0)) : In x bs -> In x (replace bs a0 b0) \elim bs
+      | nil => \lam s => s
+      | :: a bs => \lam s => \case s \with {
+        | here p => cases(A.decideEq a a0) \with {
+          | yes e => contradiction
+          | no n => here p
+        }
+        | there i => cases(A.decideEq a a0) \with {
+          | yes e => there (replaceLem0 bs a0 b0 x q i)
+          | no n => there (replaceLem0 bs a0 b0 x q i)
+        }
+      }
+
+    \func replaceLem0' {A : DecSet} (bs : List A) (a0 b0 x : A) (q : Not(x = b0)) : In x (replace bs a0 b0) -> In x bs \elim bs
+      | nil => \lam s => s
+      | :: a bs => cases(A.decideEq a a0) \with {
+        | yes e => \lam s => \case s \with {
+          | here p => contradiction
+          | there i => there (replaceLem0' bs a0 b0 x q i)
+        }
+        | no n => \lam s => \case s \with {
+          | here p => here p
+          | there i => there (replaceLem0' bs a0 b0 x q i)
+        }
+      }
+
+    \func replaceLem1 {A : DecSet} (bs : List A) (a0 b0 : A) : In a0 bs -> In b0 (replace bs a0 b0) \elim bs
+      | nil => contradiction
+      | :: a bs => \lam s => cases s \with {
+        | here p => cases (A.decideEq a a0) \with {
+          | yes e => here idp
+          | no n => contradiction
+        }
+        | there s1 => cases (A.decideEq a a0) \with {
+          | yes e => here idp
+          | no n => there (replaceLem1 bs a0 b0 s1)
+        }
+      }
+
+    \func replaceLem2 {A : DecSet} (bs : List A) (a0 b0 : A) (p : a0 = b0) : bs = (replace bs a0 b0) \elim bs
+      | nil => idp
+      | :: a bs => cases(A.decideEq a a0) \with {
+        | yes e => rewrite (e, p) (pmap (:: b0 __) (replaceLem2 bs b0 b0 idp))
+        | no n => pmap (:: a __) (replaceLem2 bs a0 b0 p)
+      }
+
+    \func replaceLem3 {A : DecSet} (bs : List A) (a0 b0 : A) (n : Not(a0 = b0)) : Not (In a0 (replace bs a0 b0)) \elim bs
+      | nil => \case __
+      | :: a bs => cases(A.decideEq a a0) \with {
+        | yes e => \lam s => \case s \with {
+          | here p => contradiction
+          | there i => replaceLem3 bs a0 b0 n i
+        }
+        | no n1 => \lam s => \case s \with {
+          | here p => contradiction
+          | there i => replaceLem3 bs a0 b0 n i
+        }
+      }
+
+    \func replaceLem {A : DecSet} (as bs : List A) (a0 b0 : A) (r : EqList (a0 :: as) (b0 :: bs))
+                     (q : intersection'.in as a0 = false) (q1 : intersection'.in bs b0 = false) : EqList as (replace bs a0 b0) =>
+      \lam x => (\lam s => cases(A.decideEq x b0) \with {
+        | yes e => cases(A.decideEq a0 b0) \with {
+          | yes e1 => \let s1 => rewriteI (e *> (inv e1)) q | iL => (intersection'.inLem as x).1 s \in contradiction
+          | no n => \let t => (r a0).1 (here idp) \in \case t \with {
+            | here p => contradiction
+            | there i => rewrite e (replaceLem1 bs a0 b0 i)
+          }
+        }
+        | no n => \let t => (r x).1 (there s) \in \case t \with {
+          | here p => contradiction
+          | there i => cases(A.decideEq x a0) \with {
+            | yes e => \let s1 => rewriteI e q | iL => (intersection'.inLem as x).1 s \in contradiction
+            | no n1 => replaceLem0 bs a0 b0 x (\lam s => contradiction) i
+          }
+        }
+      }, \lam s => cases(A.decideEq x b0) \with {
+        | yes e => cases(A.decideEq a0 b0) \with {
+          | yes e1 => \let t => rewriteI (replaceLem2 bs a0 b0 e1) s | t1 => rewriteI e q1 | t2 => (intersection'.inLem bs x).1 t \in contradiction
+          | no n => \let t => (r x).2 (here e) \in cases t \with {
+            | here p => contradiction
+            | there t1 => t1
+          }
+        }
+        | no n => cases(A.decideEq x a0) \with {
+          | yes e => \let t => replaceLem3 bs a0 b0 (\lam pa => \case (n (e *> pa))) \in \case t (rewriteF e s)
+          | no n1 => \let t => replaceLem0' bs a0 b0 x (\case n __) s | t1 => (r x).2 (there t) \in \case t1 \with {
+            | here p => contradiction
+            | there i => i
+          }
+        }
+      })
+
+    \func replaceLemLen {A : DecSet} (bs : List A) (a0 b0 : A) : length bs = length (replace bs a0 b0) \elim bs
+      | nil => idp
+      | :: a bs => cases(A.decideEq a a0) \with {
+        | yes e => pmap suc (replaceLemLen bs a0 b0)
+        | no n => pmap suc (replaceLemLen bs a0 b0)
+      }
+
+    \func replaceLem4 {A : DecSet} (bs : List A) (a0 b0 : A) (q1 : intersection'.in bs b0 = false) (q2 : intersection'.in bs a0 = false) : intersection'.in (replace bs a0 b0) b0 = false \elim bs
+      | nil => idp
+      | :: a bs => cases(A.decideEq a a0 arg addPath) \with {
+        | yes e, p => \let t => rewrite p q2 \in contradiction
+        | no n, p => cases(A.decideEq a b0 arg addPath) \with {
+          | yes e, p1 => \let t => rewrite p1 q1 \in t
+          | no n1, p1 => \let t => rewrite p q2 | t1 => rewrite p1 q1 \in replaceLem4 bs a0 b0 t1 t
+        }
+      }
+
+    \func replaceLemUnique {A : DecSet} (bs : List A) (a0 b0 : A) (q : intersection'.in bs b0 = false) (q1 : isUnique bs) : isUnique (replace bs a0 b0) \elim bs
+      | nil => ()
+      | :: a bs => cases(A.decideEq a a0) \with {
+        | yes e => cases(A.decideEq a b0 arg addPath) \with {
+          | yes e1, p => \let q' => rewrite p q \in contradiction
+          | no n, p => \let q' => rewrite p q \in (\let t1 => rewrite e q1.1 \in replaceLem4 bs a0 b0 q' t1, replaceLemUnique bs a0 b0 q' q1.2)
+        }
+        | no n => cases(A.decideEq a b0 arg addPath) \with {
+          | yes e, p => \let q' => rewrite p q \in contradiction
+          | no n1, p => \let q' => rewrite p q \in  (\let t => replaceLem0' bs a0 b0 a (\case n1 __) \in cases(intersection'.in (replace bs a0 b0) a arg addPath) \with {
+            | true, p1 => \let t1 => (intersection'.inLem (replace bs a0 b0) a).2 p1 | t2 => (intersection'.inLem bs a).1 (t t1) | t3 => q1.1 \in contradiction
+            | false, p1 => idp
+          }, replaceLemUnique bs a0 b0 q' q1.2)
+        }
+      }
+
+    \func uniqueLem {A : DecSet} (a1 a2 : List A) (r : EqList a1 a2) (q1 : isUnique a1) (q2 : isUnique a2) : length a1 = length a2 \elim a1, a2
+      | nil, nil => idp
+      | nil, :: a a2 => \case (r a).2 (here idp)
+      | :: a a1, nil => \case (r a).1 (here idp)
+      | :: a0 as, :: b0 bs => \let bs' => replace bs a0 b0 | t => replaceLem as bs a0 b0 r q1.1 q2.1 | t1 => replaceLemUnique bs a0 b0 q2.1 q2.2
+                              \in pmap suc ((uniqueLem as bs' t q1.2 t1) *> inv(replaceLemLen bs a0 b0))
+  }
+
+\func size__<=n' {A : DecSet} (s : ListSet A) (n : Nat) : \Prop => TruncP (LessOrEq' (size s) n)
+
+\func sizeEq {A : DecSet} (s : ListSet A) (n : Nat) : size__<=n s n <-> size__<=n' s n \elim s
+  | in~ a => (\lam s => \case s \with {
+    | inP (l, q, s) => \case q \with {
+      | inP q => \let ul => size.unique l nil | ua => size.unique a nil | t1 => size.uniqueLen l nil | t2 => leqTrans t1 q
+                      | r1 => size.uniqueEq1 l | r2 => eqLem1 a l s | r3 => size.uniqueEq2 a l r2
+                      | t5 => size.uniqueLem (size.unique a nil) (size.unique l nil) r3 (size.uniqueIsUnique a nil ()) (size.uniqueIsUnique l nil ())
+                      | y => rewriteI t5 t2 \in inP y
+    }
+  }, \lam s => \let ua => size.unique a nil \in \case s \with {
+    | inP s => inP (ua, inP s, size.uniqueEq1 a)
+  })
+  \where {
+    \func leqTrans {a b c : Nat} (p : LessOrEq' a b) (q : LessOrEq' b c) : LessOrEq' a c \elim a, b, c, p, q
+      | a, b, c, <=-refl p, <=-refl p1 => <=-refl (p *> p1)
+      | a, b, suc c, <=-refl p, <=-step q => <=-step (rewrite p q)
+      | a, suc b, c, <=-step p, <=-refl q => \let t => <=-step p \in rewriteI q t
+      | a, suc b, suc c, <=-step p, <=-step q => \let t => <=-step (<=-refl {b} idp) | t1 => leqTrans p t | t2 => leqTrans t1 q \in <=-step t2
+
+    \func eqLem1 {A : DecSet} (a l : List A) (s : \Pi (x : ListSetSet.A) -> ListSetSet.isElem x (in~ a) <-> In x l) : EqList a l =>
+      s
+  }
+
+-- Optional
+-- 8. Определите предикат isFin : \Type -> \Prop так, чтобы множество \Sigma (P : A -> \Prop) (isFin (\Sigma (a : A) (P A))) удовлетворяло FinSetSpec, определите этот инстанс.
+
+-- Optional
+-- 9. Определите NubListSet и инстанс FinSetSpec для него.
